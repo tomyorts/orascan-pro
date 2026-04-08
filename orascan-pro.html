@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>OraScan Pro — ORTHOPLAN AI</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+:root{
+  --bg:#050A14;--bg2:#0A1220;--bg3:#0F1A2E;
+  --cyan:#00C8FF;--cyan2:#0080FF;--green:#00FF96;--amber:#FFD060;--red:#FF4F4F;
+  --text:#E8F4FF;--text2:#7A9BBF;--text3:#3D5470;
+  --border:rgba(0,200,255,0.12);--border2:rgba(0,200,255,0.25);
+}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,'SF Pro Display',sans-serif;
+  height:100vh;overflow:hidden;display:flex;flex-direction:column;}
+
+/* Header */
+#header{padding:14px 20px;display:flex;align-items:center;justify-content:space-between;
+  border-bottom:1px solid var(--border);flex-shrink:0;}
+.logo{display:flex;align-items:center;gap:10px;}
+.logo-badge{background:linear-gradient(135deg,#003580,#0080FF);border-radius:8px;
+  width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:14px;}
+.logo-text{font-size:17px;font-weight:700;letter-spacing:-.5px;}
+.logo-sub{font-size:9px;letter-spacing:3px;color:var(--cyan);text-transform:uppercase;margin-top:1px;}
+.status-pill{display:flex;align-items:center;gap:6px;background:rgba(0,200,255,0.08);
+  border:1px solid var(--border2);border-radius:20px;padding:5px 12px;font-size:11px;color:var(--cyan);}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:blink 1.5s infinite;}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:.3;}}
+
+/* Phase bar */
+#phasebar{display:flex;gap:0;flex-shrink:0;border-bottom:1px solid var(--border);overflow-x:auto;scrollbar-width:none;}
+.phase-tab{flex:1;min-width:72px;padding:10px 8px;text-align:center;cursor:pointer;
+  border-right:1px solid var(--border);transition:all .2s;position:relative;}
+.phase-tab:last-child{border-right:none;}
+.phase-tab.active{background:rgba(0,200,255,0.08);}
+.phase-tab.done{background:rgba(0,255,150,0.05);}
+.phase-icon{font-size:15px;margin-bottom:3px;}
+.phase-name{font-size:10px;font-weight:600;color:var(--text2);}
+.phase-tab.active .phase-name{color:var(--cyan);}
+.phase-tab.done .phase-name{color:var(--green);}
+.phase-check{position:absolute;top:6px;right:6px;font-size:9px;color:var(--green);}
+
+/* Main area */
+#main{flex:1;display:grid;grid-template-columns:1fr 260px;min-height:0;}
+
+/* Camera/scan panel */
+#scanpanel{display:flex;flex-direction:column;position:relative;border-right:1px solid var(--border);}
+#camview{flex:1;position:relative;background:#000;overflow:hidden;}
+#camera{width:100%;height:100%;object-fit:cover;display:none;}
+#canvas3d{position:absolute;inset:0;width:100%;height:100%;}
+#scanoverlay{position:absolute;inset:0;pointer-events:none;}
+
+/* HUD elements */
+.hud-tl{position:absolute;top:12px;left:12px;display:flex;flex-direction:column;gap:6px;}
+.hud-tr{position:absolute;top:12px;right:12px;display:flex;flex-direction:column;gap:6px;align-items:flex-end;}
+.hud-bl{position:absolute;bottom:12px;left:12px;}
+.hud-br{position:absolute;bottom:12px;right:12px;}
+.hud-chip{background:rgba(0,5,15,0.75);backdrop-filter:blur(8px);border-radius:7px;
+  padding:5px 10px;font-size:10px;font-family:monospace;border:1px solid rgba(0,200,255,0.18);}
+.hud-chip.rec{color:#FF4F4F;border-color:rgba(255,79,79,0.3);}
+.hud-chip.acc{color:var(--green);border-color:rgba(0,255,150,0.25);}
+.hud-chip.fps{color:var(--cyan);border-color:var(--border2);}
+.rec-dot{width:7px;height:7px;border-radius:50%;background:#FF4F4F;display:inline-block;
+  margin-right:5px;animation:blink .8s infinite;}
+
+/* Scan guide overlay */
+.guide-ring{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  width:200px;height:140px;border:1.5px solid rgba(0,200,255,0.35);border-radius:50%;
+  box-shadow:0 0 0 1px rgba(0,200,255,0.1) inset;}
+.guide-corner{position:absolute;width:20px;height:20px;border-color:var(--cyan);border-style:solid;}
+.gc-tl{top:10px;left:10px;border-width:2px 0 0 2px;}
+.gc-tr{top:10px;right:10px;border-width:2px 2px 0 0;}
+.gc-bl{bottom:10px;left:10px;border-width:0 0 2px 2px;}
+.gc-br{bottom:10px;right:10px;border-width:0 2px 2px 0;}
+
+/* Progress arc */
+.prog-ring{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);}
+
+/* Scan controls */
+#scancontrols{padding:12px 16px;border-top:1px solid var(--border);flex-shrink:0;}
+#scanbar{height:3px;background:rgba(255,255,255,0.08);border-radius:2px;margin-bottom:10px;overflow:hidden;}
+#scanfill{height:100%;width:0%;background:linear-gradient(90deg,var(--cyan2),var(--cyan));
+  border-radius:2px;transition:width .1s;box-shadow:0 0 8px rgba(0,200,255,.4);}
+#tip{font-size:10px;color:var(--text2);margin-bottom:10px;min-height:14px;transition:opacity .3s;}
+#scanbtn{width:100%;padding:13px;background:linear-gradient(135deg,#003080,#0070E0);
+  border:none;border-radius:12px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;
+  letter-spacing:.3px;transition:all .2s;}
+#scanbtn:hover{transform:translateY(-1px);box-shadow:0 4px 20px rgba(0,100,255,.4);}
+#scanbtn:disabled{background:rgba(255,255,255,.06);color:#444;cursor:not-allowed;transform:none;box-shadow:none;}
+
+/* Side panel */
+#sidepanel{display:flex;flex-direction:column;overflow-y:auto;scrollbar-width:none;}
+.section{padding:14px 16px;border-bottom:1px solid var(--border);}
+.section-title{font-size:9px;letter-spacing:2.5px;color:var(--text3);text-transform:uppercase;margin-bottom:10px;}
+
+/* Metrics */
+.metric-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+.metric{background:var(--bg3);border:1px solid var(--border);border-radius:9px;padding:9px;text-align:center;}
+.metric-val{font-size:17px;font-weight:700;font-family:monospace;color:var(--cyan);line-height:1;}
+.metric-unit{font-size:8px;color:var(--text3);margin-left:2px;}
+.metric-label{font-size:9px;color:var(--text3);margin-top:4px;}
+
+/* Quality bar */
+.qbar-row{margin-bottom:8px;}
+.qbar-header{display:flex;justify-content:space-between;margin-bottom:4px;}
+.qbar-label{font-size:10px;color:var(--text2);}
+.qbar-val{font-size:10px;font-family:monospace;}
+.qbar-track{height:4px;background:rgba(255,255,255,.07);border-radius:2px;overflow:hidden;}
+.qbar-fill{height:100%;border-radius:2px;transition:width .3s;}
+
+/* AI analysis */
+#aibox{background:var(--bg3);border:1px solid var(--border);border-radius:10px;
+  padding:12px;font-size:11px;line-height:1.6;color:var(--text2);min-height:80px;
+  position:relative;}
+#aibox.loading::after{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  width:20px;height:20px;border:2px solid var(--border2);border-top-color:var(--cyan);
+  border-radius:50%;animation:spin .8s linear infinite;}
+@keyframes spin{to{transform:translate(-50%,-50%) rotate(360deg);}}
+.ai-badge{display:inline-block;background:rgba(0,200,255,.1);border:1px solid var(--border2);
+  border-radius:5px;padding:2px 6px;font-size:9px;color:var(--cyan);margin-bottom:8px;letter-spacing:1px;}
+
+/* API key input */
+#apirow{display:flex;gap:6px;margin-bottom:8px;}
+#apikey{flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:7px;
+  padding:6px 10px;color:var(--text);font-size:11px;outline:none;}
+#apikey::placeholder{color:var(--text3);}
+#apibtn{background:rgba(0,200,255,.12);border:1px solid var(--border2);border-radius:7px;
+  padding:6px 10px;color:var(--cyan);font-size:11px;cursor:pointer;white-space:nowrap;}
+
+/* Complete screen */
+#complete{display:none;position:absolute;inset:0;background:rgba(5,10,20,.95);
+  backdrop-filter:blur(20px);flex-direction:column;align-items:center;justify-content:center;
+  padding:30px;text-align:center;z-index:100;}
+#complete.show{display:flex;}
+.complete-icon{font-size:48px;margin-bottom:16px;}
+.complete-title{font-size:22px;font-weight:700;color:var(--green);margin-bottom:6px;}
+.complete-sub{font-size:13px;color:var(--text2);margin-bottom:24px;}
+.complete-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;width:100%;margin-bottom:24px;}
+.cstat{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center;}
+.cstat-val{font-size:20px;font-weight:700;color:var(--cyan);}
+.cstat-label{font-size:9px;color:var(--text3);margin-top:3px;}
+.btn-primary{width:100%;padding:14px;background:linear-gradient(135deg,#003080,#0070E0);
+  border:none;border-radius:12px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:8px;}
+.btn-secondary{width:100%;padding:12px;background:rgba(255,255,255,.05);
+  border:1px solid rgba(255,255,255,.1);border-radius:12px;color:var(--text2);font-size:13px;cursor:pointer;}
+
+/* Cam permission */
+#caminit{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:12px;text-align:center;padding:20px;}
+.cam-icon{font-size:40px;opacity:.4;}
+.cam-msg{font-size:13px;color:var(--text2);line-height:1.6;}
+.cam-btn{padding:10px 24px;background:rgba(0,200,255,.12);border:1px solid var(--border2);
+  border-radius:20px;color:var(--cyan);font-size:12px;cursor:pointer;}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div id="header">
+  <div class="logo">
+    <div class="logo-badge">🦷</div>
+    <div>
+      <div class="logo-text">OraScan Pro</div>
+      <div class="logo-sub">ORTHOPLAN AI System</div>
+    </div>
+  </div>
+  <div class="status-pill">
+    <span class="dot"></span>
+    <span id="statuslabel">初期化中</span>
+  </div>
+</div>
+
+<!-- Phase tabs -->
+<div id="phasebar">
+  <div class="phase-tab active" data-phase="0">
+    <div class="phase-icon">⌒</div>
+    <div class="phase-name">上顎</div>
+  </div>
+  <div class="phase-tab" data-phase="1">
+    <div class="phase-icon">⌣</div>
+    <div class="phase-name">下顎</div>
+  </div>
+  <div class="phase-tab" data-phase="2">
+    <div class="phase-icon">◁</div>
+    <div class="phase-name">左側方</div>
+  </div>
+  <div class="phase-tab" data-phase="3">
+    <div class="phase-icon">▷</div>
+    <div class="phase-name">右側方</div>
+  </div>
+  <div class="phase-tab" data-phase="4">
+    <div class="phase-icon">◇</div>
+    <div class="phase-name">前歯部</div>
+  </div>
+</div>
+
+<!-- Main -->
+<div id="main">
+
+  <!-- Scan panel -->
+  <div id="scanpanel">
+    <div id="camview">
+      <video id="camera" autoplay playsinline muted></video>
+      <canvas id="canvas3d"></canvas>
+
+      <!-- Camera init -->
+      <div id="caminit">
+        <div class="cam-icon">📷</div>
+        <div class="cam-msg">カメラアクセスを許可すると<br>リアルタイムスキャンが開始されます</div>
+        <button class="cam-btn" onclick="startCamera()">カメラを起動</button>
+      </div>
+
+      <!-- Scan overlay -->
+      <div id="scanoverlay" style="display:none;">
+        <div class="guide-corner gc-tl"></div>
+        <div class="guide-corner gc-tr"></div>
+        <div class="guide-corner gc-bl"></div>
+        <div class="guide-corner gc-br"></div>
+        <div class="guide-ring"></div>
+
+        <div class="hud-tl">
+          <div class="hud-chip rec" id="rechip" style="display:none;">
+            <span class="rec-dot"></span>REC
+          </div>
+          <div class="hud-chip fps" id="fpschip">0 fps</div>
+        </div>
+        <div class="hud-tr">
+          <div class="hud-chip acc" id="acchip">-- %</div>
+          <div class="hud-chip" style="color:var(--amber);" id="ptschip">0k pts</div>
+        </div>
+        <div class="hud-br">
+          <div class="hud-chip" style="color:var(--text2);" id="phaselabel">上顎 / Upper</div>
+        </div>
+      </div>
+
+      <!-- Complete overlay -->
+      <div id="complete">
+        <div class="complete-icon">✓</div>
+        <div class="complete-title">全顎スキャン完了</div>
+        <div class="complete-sub">5セクションすべてのデータを取得しました</div>
+        <div class="complete-stats">
+          <div class="cstat"><div class="cstat-val" id="cs-pts">0</div><div class="cstat-label">総ポイント</div></div>
+          <div class="cstat"><div class="cstat-val" id="cs-acc">0%</div><div class="cstat-label">平均精度</div></div>
+          <div class="cstat"><div class="cstat-val" id="cs-res">0.1mm</div><div class="cstat-label">解像度</div></div>
+        </div>
+        <button class="btn-primary" onclick="exportToOrthoplan()">ORTHOPLAN AIへ転送 →</button>
+        <button class="btn-secondary" onclick="resetScan()">再スキャン</button>
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div id="scancontrols">
+      <div id="scanbar"><div id="scanfill"></div></div>
+      <div id="tip">カメラを起動してスキャンを開始してください</div>
+      <button id="scanbtn" onclick="toggleScan()" disabled>カメラ起動中...</button>
+    </div>
+  </div>
+
+  <!-- Side panel -->
+  <div id="sidepanel">
+
+    <!-- Metrics -->
+    <div class="section">
+      <div class="section-title">スキャン指標</div>
+      <div class="metric-grid">
+        <div class="metric">
+          <div class="metric-val" id="m-frames">0</div>
+          <div class="metric-label">フレーム数</div>
+        </div>
+        <div class="metric">
+          <div class="metric-val" id="m-pts">0<span class="metric-unit">k</span></div>
+          <div class="metric-label">ポイント数</div>
+        </div>
+        <div class="metric">
+          <div class="metric-val" id="m-res">0.1<span class="metric-unit">mm</span></div>
+          <div class="metric-label">解像度</div>
+        </div>
+        <div class="metric">
+          <div class="metric-val" id="m-cov">0<span class="metric-unit">%</span></div>
+          <div class="metric-label">カバレッジ</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quality -->
+    <div class="section">
+      <div class="section-title">品質評価</div>
+      <div class="qbar-row">
+        <div class="qbar-header">
+          <span class="qbar-label">スキャン精度</span>
+          <span class="qbar-val" id="q-acc" style="color:var(--green);">--%</span>
+        </div>
+        <div class="qbar-track"><div class="qbar-fill" id="qf-acc" style="width:0%;background:var(--green);"></div></div>
+      </div>
+      <div class="qbar-row">
+        <div class="qbar-header">
+          <span class="qbar-label">ポイント密度</span>
+          <span class="qbar-val" id="q-dens" style="color:var(--cyan);">--%</span>
+        </div>
+        <div class="qbar-track"><div class="qbar-fill" id="qf-dens" style="width:0%;background:var(--cyan);"></div></div>
+      </div>
+      <div class="qbar-row">
+        <div class="qbar-header">
+          <span class="qbar-label">オーバーラップ</span>
+          <span class="qbar-val" id="q-ovlp" style="color:var(--amber);">--%</span>
+        </div>
+        <div class="qbar-track"><div class="qbar-fill" id="qf-ovlp" style="width:0%;background:var(--amber);"></div></div>
+      </div>
+    </div>
+
+    <!-- AI Analysis -->
+    <div class="section">
+      <div class="section-title">AI 歯科解析</div>
+      <div id="apirow">
+        <input type="password" id="apikey" placeholder="Anthropic API Key (sk-ant-...)" />
+        <button id="apibtn" onclick="runAIAnalysis()">解析</button>
+      </div>
+      <div id="aibox">
+        <div style="color:var(--text3);font-size:11px;">スキャン完了後にAI解析を実行できます。<br>Anthropic APIキーを入力してください。</div>
+      </div>
+    </div>
+
+    <!-- Phase checklist -->
+    <div class="section">
+      <div class="section-title">セクション進捗</div>
+      <div id="checklist"></div>
+    </div>
+
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ─── State ──────────────────────────────────────────────
+const PHASES = [
+  {id:'upper', name:'上顎', sub:'Upper Arch'},
+  {id:'lower', name:'下顎', sub:'Lower Arch'},
+  {id:'left',  name:'左側方', sub:'Left Buccal'},
+  {id:'right', name:'右側方', sub:'Right Buccal'},
+  {id:'front', name:'前歯部', sub:'Anterior'},
+];
+const TIPS = [
+  '端から端へゆっくりスライド（2cm/秒を目安に）',
+  'カメラを歯面から1.5cm以内に保持',
+  '唾液をエアーで除去してから撮影',
+  '十分なオーバーラップ（30%以上）を確保',
+  '照明を安定させ、影を作らないように',
+  '歯頚部から切端へ向かってスキャン',
+];
+
+let state = {
+  camReady: false,
+  isScanning: false,
+  currentPhase: 0,
+  progress: 0,
+  phasesDone: [],
+  frames: 0,
+  points: 0,
+  accuracy: 0,
+  density: 0,
+  overlap: 0,
+  fps: 0,
+  tipIdx: 0,
+  scanInterval: null,
+  tipInterval: null,
+  fpsInterval: null,
+  totalPoints: 0,
+  avgAccuracy: [],
+};
+
+// ─── Three.js setup ─────────────────────────────────────
+const canvas3d = document.getElementById('canvas3d');
+const renderer = new THREE.WebGLRenderer({canvas: canvas3d, alpha: true, antialias: true});
+renderer.setPixelRatio(devicePixelRatio);
+const scene = new THREE.Scene();
+const camera3 = new THREE.PerspectiveCamera(60, 1, 0.01, 100);
+camera3.position.set(0, 0, 2.5);
+
+// Point cloud geometry
+const MAX_PTS = 80000;
+const positions = new Float32Array(MAX_PTS * 3);
+const colors = new Float32Array(MAX_PTS * 3);
+const geo = new THREE.BufferGeometry();
+geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+geo.setDrawRange(0, 0);
+
+const mat = new THREE.PointsMaterial({
+  size: 0.018, vertexColors: true, transparent: true, opacity: 0.92,
+  sizeAttenuation: true
+});
+const pointCloud = new THREE.Points(geo, mat);
+scene.add(pointCloud);
+
+// Ambient light reference sphere (hidden, used for normals)
+const scanLight = new THREE.PointLight(0x00C8FF, 2, 5);
+scanLight.position.set(0, 1, 2);
+scene.add(scanLight);
+
+// Grid helper
+const grid = new THREE.GridHelper(3, 20, 0x0A2040, 0x0A2040);
+scene.add(grid);
+
+let ptCount = 0;
+let rotY = 0;
+let animFrame;
+
+function resizeRenderer() {
+  const p = canvas3d.parentElement;
+  const W = p.clientWidth, H = p.clientHeight;
+  renderer.setSize(W, H, false);
+  camera3.aspect = W / H;
+  camera3.updateProjectionMatrix();
+}
+
+function generateArchPoints(phaseId, count) {
+  const pts = [];
+  for (let i = 0; i < count; i++) {
+    let x, y, z;
+    const t = Math.random();
+    const noise = () => (Math.random() - .5) * 0.04;
+
+    if (phaseId === 'upper' || phaseId === 'lower') {
+      const a = t * Math.PI;
+      const r = 0.7 + Math.sin(t * Math.PI) * 0.25;
+      x = Math.cos(a - Math.PI/2) * r + noise();
+      z = Math.sin(a) * r * 0.6 + noise();
+      y = (phaseId === 'upper' ? 0.1 : -0.1) + Math.sin(t * Math.PI * 4) * 0.06 + noise();
+    } else if (phaseId === 'left' || phaseId === 'right') {
+      const side = phaseId === 'left' ? -1 : 1;
+      x = side * (0.6 + Math.random() * 0.1) + noise();
+      y = (Math.random() - .5) * 0.5 + noise();
+      z = (Math.random() - .5) * 0.6 + noise();
+    } else {
+      x = (Math.random() - .5) * 0.8 + noise();
+      y = (Math.random() - .5) * 0.3 + noise();
+      z = 0.5 + noise();
+    }
+    pts.push({x, y, z});
+  }
+  return pts;
+}
+
+function addPoints(phaseId, count) {
+  const pts = generateArchPoints(phaseId, count);
+  const pos = geo.attributes.position.array;
+  const col = geo.attributes.color.array;
+
+  for (let i = 0; i < pts.length && ptCount < MAX_PTS; i++, ptCount++) {
+    const idx = ptCount * 3;
+    pos[idx]   = pts[i].x;
+    pos[idx+1] = pts[i].y;
+    pos[idx+2] = pts[i].z;
+
+    // Color: cyan-to-green gradient based on accuracy
+    const acc = .6 + Math.random() * .4;
+    if (acc > .85) {
+      col[idx] = 0; col[idx+1] = 1; col[idx+2] = .6;  // green
+    } else if (acc > .65) {
+      col[idx] = 0; col[idx+1] = .78; col[idx+2] = 1;  // cyan
+    } else {
+      col[idx] = 1; col[idx+1] = .55; col[idx+2] = 0;  // amber
+    }
+  }
+  geo.attributes.position.needsUpdate = true;
+  geo.attributes.color.needsUpdate = true;
+  geo.setDrawRange(0, ptCount);
+}
+
+function animate3D() {
+  animFrame = requestAnimationFrame(animate3D);
+  if (state.isScanning) {
+    rotY += 0.003;
+    pointCloud.rotation.y = rotY;
+    grid.rotation.y = rotY;
+  }
+  renderer.render(scene, camera3);
+}
+
+// ─── Camera ─────────────────────────────────────────────
+async function startCamera() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {facingMode: 'user', width:{ideal:1280}, height:{ideal:720}},
+      audio: false
+    });
+    const vid = document.getElementById('camera');
+    vid.srcObject = stream;
+    vid.style.display = 'block';
+    document.getElementById('caminit').style.display = 'none';
+    document.getElementById('scanoverlay').style.display = 'block';
+    state.camReady = true;
+    document.getElementById('scanbtn').disabled = false;
+    document.getElementById('scanbtn').textContent = 'スキャン開始';
+    document.getElementById('statuslabel').textContent = 'カメラ準備完了';
+    setTip(TIPS[0]);
+
+    // FPS counter
+    let fpsCount = 0;
+    state.fpsInterval = setInterval(() => {
+      document.getElementById('fpschip').textContent = fpsCount * 2 + ' fps';
+      fpsCount = 0;
+    }, 500);
+    vid.addEventListener('timeupdate', () => fpsCount++);
+  } catch(e) {
+    document.querySelector('.cam-msg').textContent = 'カメラへのアクセスが拒否されました。\nブラウザの設定から許可してください。';
+  }
+}
+
+// ─── Scan logic ──────────────────────────────────────────
+function toggleScan() {
+  if (!state.isScanning) startScan();
+  else stopScan();
+}
+
+function startScan() {
+  state.isScanning = true;
+  state.progress = 0;
+  state.frames = 0;
+  state.accuracy = 80 + Math.random() * 8;
+  state.density = 60 + Math.random() * 20;
+  state.overlap = 55 + Math.random() * 20;
+
+  document.getElementById('scanbtn').textContent = 'スキャン停止';
+  document.getElementById('rechip').style.display = 'block';
+  document.getElementById('statuslabel').textContent = 'スキャン中';
+  document.getElementById('phaselabel').textContent =
+    PHASES[state.currentPhase].name + ' / ' + PHASES[state.currentPhase].sub;
+
+  state.scanInterval = setInterval(() => {
+    state.progress = Math.min(100, state.progress + .7 + Math.random() * .5);
+    state.frames++;
+    state.points += Math.floor(80 + Math.random() * 120);
+    state.totalPoints += Math.floor(80 + Math.random() * 120);
+
+    // Jitter metrics
+    state.accuracy  = Math.min(99, Math.max(72, state.accuracy  + (Math.random()-.45)*1.5));
+    state.density   = Math.min(98, Math.max(60, state.density   + (Math.random()-.4)*1.2));
+    state.overlap   = Math.min(95, Math.max(55, state.overlap   + (Math.random()-.4)*1));
+
+    addPoints(PHASES[state.currentPhase].id, 12);
+    updateUI();
+
+    if (state.progress >= 100) {
+      phaseComplete();
+    }
+  }, 50);
+
+  state.tipInterval = setInterval(() => {
+    state.tipIdx = (state.tipIdx + 1) % TIPS.length;
+    setTip(TIPS[state.tipIdx]);
+  }, 3500);
+}
+
+function stopScan() {
+  clearInterval(state.scanInterval);
+  clearInterval(state.tipInterval);
+  state.isScanning = false;
+  document.getElementById('scanbtn').textContent = 'スキャン再開';
+  document.getElementById('rechip').style.display = 'none';
+  document.getElementById('statuslabel').textContent = '一時停止';
+}
+
+function phaseComplete() {
+  clearInterval(state.scanInterval);
+  clearInterval(state.tipInterval);
+  state.isScanning = false;
+  state.phasesDone.push(state.currentPhase);
+  state.avgAccuracy.push(state.accuracy);
+
+  // Mark tab done
+  document.querySelectorAll('.phase-tab')[state.currentPhase].classList.remove('active');
+  document.querySelectorAll('.phase-tab')[state.currentPhase].classList.add('done');
+  document.querySelectorAll('.phase-tab')[state.currentPhase].innerHTML +=
+    '<div class="phase-check">✓</div>';
+
+  updateChecklist();
+  document.getElementById('rechip').style.display = 'none';
+
+  if (state.phasesDone.length >= PHASES.length) {
+    showComplete();
+    return;
+  }
+
+  state.currentPhase++;
+  state.progress = 0;
+  state.points = 0;
+  state.frames = 0;
+
+  document.querySelectorAll('.phase-tab')[state.currentPhase].classList.add('active');
+  document.getElementById('scanbtn').textContent =
+    PHASES[state.currentPhase].name + 'をスキャン';
+  document.getElementById('statuslabel').textContent = '次のセクションへ';
+  setTip('次は ' + PHASES[state.currentPhase].name + ' (' + PHASES[state.currentPhase].sub + ')');
+  updateUI();
+}
+
+function showComplete() {
+  const avgAcc = Math.round(state.avgAccuracy.reduce((a,b)=>a+b,0)/state.avgAccuracy.length);
+  document.getElementById('cs-pts').textContent = Math.round(state.totalPoints/1000) + 'k';
+  document.getElementById('cs-acc').textContent = avgAcc + '%';
+  document.getElementById('complete').classList.add('show');
+  document.getElementById('statuslabel').textContent = 'スキャン完了';
+  document.getElementById('scanbtn').disabled = true;
+  document.getElementById('scanbtn').textContent = '完了';
+}
+
+function updateUI() {
+  const p = state.progress;
+  document.getElementById('scanfill').style.width = p + '%';
+  document.getElementById('acchip').textContent = Math.round(state.accuracy) + '%';
+  document.getElementById('ptschip').textContent = Math.round(state.points/1000) + 'k pts';
+
+  document.getElementById('m-frames').textContent = state.frames;
+  document.getElementById('m-pts').innerHTML = Math.round(state.totalPoints/1000) + '<span class="metric-unit">k</span>';
+  document.getElementById('m-cov').innerHTML = Math.round(p) + '<span class="metric-unit">%</span>';
+
+  const accColor = state.accuracy >= 85 ? 'var(--green)' : state.accuracy >= 70 ? 'var(--amber)' : 'var(--red)';
+  document.getElementById('q-acc').textContent  = Math.round(state.accuracy)  + '%';
+  document.getElementById('q-dens').textContent = Math.round(state.density)   + '%';
+  document.getElementById('q-ovlp').textContent = Math.round(state.overlap)   + '%';
+  document.getElementById('q-acc').style.color  = accColor;
+  document.getElementById('qf-acc').style.width  = state.accuracy  + '%';
+  document.getElementById('qf-dens').style.width = state.density   + '%';
+  document.getElementById('qf-ovlp').style.width = state.overlap   + '%';
+  document.getElementById('qf-acc').style.background = accColor;
+}
+
+function setTip(text) {
+  const el = document.getElementById('tip');
+  el.style.opacity = 0;
+  setTimeout(() => { el.textContent = '💡 ' + text; el.style.opacity = 1; }, 200);
+}
+
+function updateChecklist() {
+  const el = document.getElementById('checklist');
+  el.innerHTML = PHASES.map((p,i) => {
+    const done = state.phasesDone.includes(i);
+    const active = i === state.currentPhase && !done;
+    return `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;
+      border-bottom:1px solid var(--border);font-size:11px;">
+      <div style="width:16px;height:16px;border-radius:50%;display:flex;align-items:center;
+        justify-content:center;font-size:9px;flex-shrink:0;
+        background:${done?'rgba(0,255,150,.15)':active?'rgba(0,200,255,.12)':'rgba(255,255,255,.05)'};
+        border:1px solid ${done?'rgba(0,255,150,.4)':active?'var(--border2)':'var(--border)'};
+        color:${done?'var(--green)':active?'var(--cyan)':'var(--text3)'};">
+        ${done?'✓':i+1}</div>
+      <span style="color:${done?'var(--green)':active?'var(--text)':'var(--text3)'};">${p.name}</span>
+      <span style="color:var(--text3);margin-left:auto;">${p.sub}</span>
+    </div>`;
+  }).join('');
+}
+
+// ─── AI Analysis ─────────────────────────────────────────
+async function runAIAnalysis() {
+  const apiKey = document.getElementById('apikey').value.trim();
+  if (!apiKey) {
+    document.getElementById('aibox').innerHTML = '<div style="color:var(--red);">APIキーを入力してください</div>';
+    return;
+  }
+  const box = document.getElementById('aibox');
+  box.innerHTML = '';
+  box.classList.add('loading');
+  box.style.minHeight = '80px';
+
+  const phaseData = state.phasesDone.map(i =>
+    `${PHASES[i].name}(${PHASES[i].sub}): 精度${Math.round(state.avgAccuracy[state.phasesDone.indexOf(i)]||state.accuracy)}%`
+  ).join(', ');
+  const prompt = `あなたは歯科矯正専門AIです。以下の口腔内スキャンデータを解析し、臨床所見と推奨事項を簡潔に日本語で報告してください（3〜4点）。
+スキャン情報: セクション=[${phaseData}], 総ポイント=${Math.round(state.totalPoints/1000)}k, 解像度=0.1mm, 平均精度=${Math.round(state.avgAccuracy.reduce((a,b)=>a+b,0)/(state.avgAccuracy.length||1))}%
+顎変形症・咬合再建の観点から評価してください。`;
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 400,
+        messages: [{role:'user', content: prompt}]
+      })
+    });
+    const data = await res.json();
+    box.classList.remove('loading');
+    if (data.content && data.content[0]) {
+      box.innerHTML = `<div class="ai-badge">CLAUDE AI 解析結果</div><div>${data.content[0].text.replace(/\n/g,'<br>')}</div>`;
+    } else {
+      box.innerHTML = `<div style="color:var(--red);">エラー: ${JSON.stringify(data.error||data)}</div>`;
+    }
+  } catch(e) {
+    box.classList.remove('loading');
+    box.innerHTML = `<div style="color:var(--red);">接続エラー: ${e.message}</div>`;
+  }
+}
+
+function exportToOrthoplan() {
+  alert('ORTHOPLAN AI への転送を開始します。\n\nSTL形式でエクスポート中...\n（実装: iOS版では ARKit + RealityKit から直接エクスポート）');
+}
+
+function resetScan() {
+  state = {camReady:true,isScanning:false,currentPhase:0,progress:0,phasesDone:[],
+    frames:0,points:0,accuracy:0,density:0,overlap:0,fps:0,tipIdx:0,
+    scanInterval:null,tipInterval:null,fpsInterval:null,totalPoints:0,avgAccuracy:[]};
+  ptCount = 0;
+  geo.setDrawRange(0,0);
+  document.getElementById('complete').classList.remove('show');
+  document.getElementById('scanfill').style.width='0%';
+  document.querySelectorAll('.phase-tab').forEach((t,i) => {
+    t.className = 'phase-tab' + (i===0?' active':'');
+    t.querySelector('.phase-check')?.remove();
+  });
+  document.getElementById('scanbtn').disabled = false;
+  document.getElementById('scanbtn').textContent = 'スキャン開始';
+  updateChecklist();
+}
+
+// ─── Init ────────────────────────────────────────────────
+resizeRenderer();
+window.addEventListener('resize', resizeRenderer);
+updateChecklist();
+animate3D();
+
+// Rotate with mouse/touch
+let isDragging = false, lastX = 0;
+canvas3d.addEventListener('mousedown', e => { isDragging=true; lastX=e.clientX; });
+window.addEventListener('mouseup', () => isDragging=false);
+window.addEventListener('mousemove', e => {
+  if (isDragging) { rotY += (e.clientX-lastX)*0.005; lastX=e.clientX; }
+});
+canvas3d.addEventListener('touchstart', e => { isDragging=true; lastX=e.touches[0].clientX; });
+window.addEventListener('touchend', () => isDragging=false);
+window.addEventListener('touchmove', e => {
+  if (isDragging) { rotY+=(e.touches[0].clientX-lastX)*0.005; lastX=e.touches[0].clientX; }
+});
+</script>
+</body>
+</html>
